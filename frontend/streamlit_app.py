@@ -1,11 +1,12 @@
 import requests
 import streamlit as st
+import os
 
 
 st.set_page_config(page_title="Market Analyst", layout="wide")
 
 st.title("Market Analyst")
-backend_url = st.sidebar.text_input("Backend URL", value="http://localhost:8000")
+backend_url = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 mode = st.sidebar.selectbox("Mode", ["Stock", "Compare", "Portfolio"])
 
