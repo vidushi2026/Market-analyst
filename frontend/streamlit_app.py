@@ -9,6 +9,57 @@ backend_url = st.sidebar.text_input("Backend URL", value="http://localhost:8000"
 
 mode = st.sidebar.selectbox("Mode", ["Stock", "Compare", "Portfolio"])
 
+SIGNAL_EXPLANATIONS = {
+    # Fundamental
+    "roe_ok": "Return on equity looks healthy (>= 12%).",
+    "roe_weak": "Return on equity looks weak (< 12%).",
+    "leverage_ok": "Debt-to-equity looks manageable (<= 150).",
+    "leverage_high": "Debt-to-equity looks high (> 150).",
+    "margins_ok": "Profit margins look healthy (>= 10%).",
+    "margins_thin": "Profit margins look thin (< 10%).",
+    # Technical
+    "ma_bullish": "Short-term average is meaningfully above long-term average (bullish bias).",
+    "ma_bearish": "Short-term average is meaningfully below long-term average (bearish bias).",
+    "ma_flat": "Short and long averages are close (sideways / no clear trend).",
+    "insufficient_price_history": "Not enough price data to compute indicators reliably.",
+    # Sentiment
+    "headline_sentiment_positive": "Recent headlines skew positive.",
+    "headline_sentiment_neutral": "Recent headlines look neutral/mixed.",
+    "headline_sentiment_negative": "Recent headlines skew negative.",
+    "no_headlines": "No recent headlines found for sentiment estimation.",
+}
+
+
+def _format_status(status: str) -> str:
+    if status == "ok":
+        return "OK"
+    if status == "partial":
+        return "Partial"
+    if status == "error":
+        return "Error"
+    return status
+
+
+def _render_signals(signals: list) -> None:
+    if not signals:
+        st.caption("No signals produced.")
+        return
+    lines = []
+    for s in signals:
+        explanation = SIGNAL_EXPLANATIONS.get(s)
+        if explanation:
+            lines.append(f"- **{s}**: {explanation}")
+        else:
+            lines.append(f"- **{s}**")
+    st.markdown("\n".join(lines))
+
+
+def _render_key_events(key_events: list) -> None:
+    if not key_events:
+        return
+    st.markdown("**Recent headlines/events:**")
+    st.markdown("\n".join([f"- {e}" for e in key_events]))
+
 
 def render_response(resp_json: dict) -> None:
     if resp_json.get("status") != "ok":
@@ -29,25 +80,35 @@ def render_response(resp_json: dict) -> None:
         st.subheader("Agent breakdown")
         breakdown = data.get("agent_breakdown") or {}
         for agent_name, agent_out in breakdown.items():
-            with st.expander(agent_name.capitalize(), expanded=False):
+            title = agent_name.capitalize()
+            if isinstance(agent_out, dict) and agent_out.get("status"):
+                title = f"{title} — {_format_status(agent_out.get('status'))}"
+
+            with st.expander(title, expanded=False):
                 if isinstance(agent_out, dict):
-                    st.write(agent_out.get("summary", ""))
+                    summary = agent_out.get("summary", "")
+                    if summary:
+                        st.write(summary)
                     if "trend" in agent_out:
-                        st.write(f"Trend: `{agent_out.get('trend')}`")
+                        st.markdown(f"**Trend:** `{agent_out.get('trend')}`")
                     if "sentiment" in agent_out:
-                        st.write(f"Sentiment: `{agent_out.get('sentiment')}`")
-                    if agent_out.get("signals"):
-                        st.write("Signals:")
-                        st.write(agent_out.get("signals"))
-                    if agent_out.get("key_events"):
-                        st.write("Key events:")
-                        st.write(agent_out.get("key_events"))
+                        st.markdown(f"**Sentiment:** `{agent_out.get('sentiment')}`")
+
+                    st.markdown("**Signals:**")
+                    _render_signals(agent_out.get("signals") or [])
+                    _render_key_events(agent_out.get("key_events") or [])
+
+                    if agent_out.get("status") == "partial":
+                        st.info("This agent returned partial data (some upstream fields were missing or insufficient).")
+                    if agent_out.get("status") == "error":
+                        st.error("This agent failed to run.")
                 else:
                     st.write(agent_out)
 
         if data.get("explanation"):
             st.subheader("Explanation")
             st.write(data["explanation"])
+            st.caption("This is a v1 explanation string; we can make it more detailed (weights + key drivers) next.")
         return
 
     # Compare / portfolio: show a readable summary, keep JSON in expander
