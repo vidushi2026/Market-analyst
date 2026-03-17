@@ -724,6 +724,67 @@ When two stocks have similar `final_score` (difference ≤ 0.5):
   - compare
   - portfolio analysis
 
+---
+
+## Phase 11 — Extensibility roadmap (actionable)
+
+### Add a new agent (general plug-in steps)
+- **Code**: implement a new agent module in `backend/agents/`.
+- **Data**: add/extend a service in `backend/services/` if new upstream data is needed.
+- **Orchestration**: call the agent from `backend/orchestrator/orchestrator.py` and include it in aggregation.
+- **Scoring**: extend `backend/orchestrator/scoring.py`:
+  - add weight/config in `config/settings.py`
+  - define normalization rules and thresholds if needed
+- **API**: extend response `agent_breakdown` schema (and UI rendering) to surface the agent output.
+- **Tests**: add unit tests with mocks; never call real upstream providers during tests.
+- **Metrics**: add agent timing/error metrics and any new upstream timing counters.
+
+### Macro-economic agent
+- **Plug-in point**: alongside fundamental/sentiment in stock analysis.
+- **Inputs**: country/region, rates, inflation, FX, commodities proxy.
+- **Outputs**: macro regime label + 0–10 score + signals.
+- **Impact**: optional additional weight; can also modify thresholds for cyclical sectors.
+
+### Sector rotation analysis
+- **Plug-in point**: compare + portfolio analysis.
+- **Inputs**: sector classification + relative strength over period.
+- **Outputs**: sector momentum signals + diversification warnings.
+
+### Backtesting engine
+- **Plug-in point**: separate workflow (not on the critical path of the API).
+- **Inputs**: strategy rules, lookback period, universe.
+- **Outputs**: performance metrics, drawdown, win rate.
+- **Ops**: run as async/background job; store results.
+
+### Real-time alerts
+- **Plug-in point**: separate service triggered by schedule/webhooks.
+- **Inputs**: tickers + alert rules.
+- **Outputs**: notifications (email/webhook).
+- **Ops**: rate limiting + dedupe required.
+
+---
+
+## Phase 12 — Acceptance criteria (done means done)
+
+### Documentation acceptance
+- A new contributor can answer from `Docs/architecture.md`:
+  - where request validation happens
+  - how agents communicate outputs
+  - what happens if sentiment fails
+  - how final recommendation is computed
+  - where to add a new agent
+
+### Implementation acceptance (v1)
+- Backend starts locally with `make dev-backend` and serves:
+  - `GET /health` returns `{status: ok, request_id: ...}`
+  - `GET /metrics` returns JSON with `counters` and `timers`
+- Core flows work end-to-end:
+  - `POST /analyze/stock` returns `status=ok` with `final_recommendation`, `final_score`, and `agent_breakdown`
+  - `POST /compare` returns `status=ok` with `winner` and `side_by_side`
+  - `POST /analyze/portfolio` returns `status=ok` with `per_stock`
+- Tests are runnable with `make test` and use mocks (no real upstream calls required).
+- Logs are written to `dump.log` for main flows.
+
 ## 1) High-Level Architecture
 
 ```
