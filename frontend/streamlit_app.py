@@ -106,10 +106,6 @@ def render_response(resp_json: dict) -> None:
                 else:
                     st.write(agent_out)
 
-        if data.get("explanation"):
-            st.subheader("Explanation")
-            st.write(data["explanation"])
-            st.caption("This is a v1 explanation string; we can make it more detailed (weights + key drivers) next.")
         return
 
     # Compare / portfolio: show a readable summary, keep JSON in expander
