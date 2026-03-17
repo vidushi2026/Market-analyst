@@ -61,6 +61,42 @@ def _render_key_events(key_events: list) -> None:
     st.markdown("**Recent headlines/events:**")
     st.markdown("\n".join([f"- {e}" for e in key_events]))
 
+def _render_stock_like_result(data: dict, title: str | None = None) -> None:
+    if title:
+        st.subheader(title)
+
+    cols = st.columns(3)
+    cols[0].metric("Recommendation", str(data.get("final_recommendation", "-")))
+    cols[1].metric("Final score", f"{float(data.get('final_score', 0)):.2f}")
+    cols[2].metric("Confidence", f"{float(data.get('confidence', 0)):.2f}")
+
+    breakdown = data.get("agent_breakdown") or {}
+    for agent_name, agent_out in breakdown.items():
+        base = agent_name.capitalize()
+        if isinstance(agent_out, dict) and agent_out.get("status"):
+            base = f"{base} — {_format_status(agent_out.get('status'))}"
+
+        with st.expander(base, expanded=False):
+            if isinstance(agent_out, dict):
+                summary = agent_out.get("summary", "")
+                if summary:
+                    st.write(summary)
+                if "trend" in agent_out:
+                    st.markdown(f"**Trend:** `{agent_out.get('trend')}`")
+                if "sentiment" in agent_out:
+                    st.markdown(f"**Sentiment:** `{agent_out.get('sentiment')}`")
+
+                st.markdown("**Signals:**")
+                _render_signals(agent_out.get("signals") or [])
+                _render_key_events(agent_out.get("key_events") or [])
+
+                if agent_out.get("status") == "partial":
+                    st.info("This agent returned partial data (some upstream fields were missing or insufficient).")
+                if agent_out.get("status") == "error":
+                    st.error("This agent failed to run.")
+            else:
+                st.write(agent_out)
+
 
 def render_response(resp_json: dict) -> None:
     if resp_json.get("status") != "ok":
@@ -73,45 +109,24 @@ def render_response(resp_json: dict) -> None:
 
     # Stock analysis shape
     if "final_recommendation" in data:
-        cols = st.columns(3)
-        cols[0].metric("Recommendation", str(data.get("final_recommendation")))
-        cols[1].metric("Final score", f"{float(data.get('final_score', 0)):.2f}")
-        cols[2].metric("Confidence", f"{float(data.get('confidence', 0)):.2f}")
-
-        st.subheader("Agent breakdown")
-        breakdown = data.get("agent_breakdown") or {}
-        for agent_name, agent_out in breakdown.items():
-            title = agent_name.capitalize()
-            if isinstance(agent_out, dict) and agent_out.get("status"):
-                title = f"{title} — {_format_status(agent_out.get('status'))}"
-
-            with st.expander(title, expanded=False):
-                if isinstance(agent_out, dict):
-                    summary = agent_out.get("summary", "")
-                    if summary:
-                        st.write(summary)
-                    if "trend" in agent_out:
-                        st.markdown(f"**Trend:** `{agent_out.get('trend')}`")
-                    if "sentiment" in agent_out:
-                        st.markdown(f"**Sentiment:** `{agent_out.get('sentiment')}`")
-
-                    st.markdown("**Signals:**")
-                    _render_signals(agent_out.get("signals") or [])
-                    _render_key_events(agent_out.get("key_events") or [])
-
-                    if agent_out.get("status") == "partial":
-                        st.info("This agent returned partial data (some upstream fields were missing or insufficient).")
-                    if agent_out.get("status") == "error":
-                        st.error("This agent failed to run.")
-                else:
-                    st.write(agent_out)
-
+        _render_stock_like_result(data, title=None)
         return
 
     # Compare / portfolio: show a readable summary, keep JSON in expander
     if "winner" in data:
         st.metric("Winner", str(data.get("winner")))
         st.write(data.get("reason", ""))
+
+        side = data.get("side_by_side") or {}
+        left = side.get("left") or {}
+        right = side.get("right") or {}
+        if left and right:
+            st.subheader("Side-by-side comparison")
+            c1, c2 = st.columns(2)
+            with c1:
+                _render_stock_like_result(left, title=str(left.get("ticker", "Left")))
+            with c2:
+                _render_stock_like_result(right, title=str(right.get("ticker", "Right")))
 
     if "per_stock" in data:
         st.subheader("Per-stock results")
