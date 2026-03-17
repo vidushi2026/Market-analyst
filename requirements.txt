@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+pydantic
+requests
+yfinance
+duckduckgo-search
+streamlit
+plotly
+pandas
+numpy
+
+# Dev/test
+pytest
+pytest-mock
+ruff

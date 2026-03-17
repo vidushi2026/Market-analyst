@@ -486,6 +486,156 @@
 - **Timezone handling**: store timestamps in ISO-8601; convert for display only in UI.
 - **Market closed**: allow stale-but-recent prices for daily interval with a clear `as_of`.
 
+---
+
+## 6) Scoring, Normalization, and Decisioning (Phase 6)
+
+### 6.1 Scoring principles
+- **All agent scores are normalized to a 0–10 scale** where:
+  - 0 = strongly negative signal set
+  - 5 = neutral / mixed
+  - 10 = strongly positive signal set
+- **Scores must be explainable**: each agent MUST provide `signals` supporting the score.
+- **Partial data must not overstate confidence**: when an agent is `status=partial`, it should reduce confidence and/or keep score closer to neutral unless strong evidence exists.
+
+---
+
+### 6.2 Agent-level scoring semantics
+
+**Fundamental agent (0–10)**
+- **0–3**: weak fundamentals (deteriorating earnings, high leverage, poor returns)
+- **4–6**: mixed/average fundamentals
+- **7–10**: strong fundamentals (improving profitability, manageable leverage, attractive valuation vs history/peers)
+
+**Technical agent (0–10)**
+- **0–3**: bearish structure (downtrend, weak momentum, unfavorable MA alignment)
+- **4–6**: sideways / uncertain (conflicting indicators)
+- **7–10**: bullish structure (uptrend, momentum confirmation, favorable MA alignment)
+
+**Sentiment agent (0–10)**
+- Map headline sentiment into score bands:
+  - **negative** → 0–3
+  - **neutral** → 4–6
+  - **positive** → 7–10
+- If sentiment is derived from sparse/noisy sources, the agent should emit `status=partial` and lower confidence.
+
+**Portfolio engine (0–10)**
+- Used only for portfolio queries (and optional for stock queries if explicitly enabled).
+- Represents **portfolio quality** (diversification + risk-adjusted profile), not “buy/sell”.
+
+---
+
+### 6.3 Normalization rules (agent outputs → comparable 0–10)
+
+**Inputs**
+- Each agent returns either:
+  - a numeric `score` (already 0–10), or
+  - categorical outputs that must be mapped to score bands.
+
+**Categorical mapping (v1 defaults)**
+- Technical `trend`:
+  - `bullish` → 8
+  - `sideways` → 5
+  - `bearish` → 2
+- Sentiment `sentiment`:
+  - `positive` → 8
+  - `neutral` → 5
+  - `negative` → 2
+
+**Clamping**
+- Any computed score MUST be clamped into [0, 10].
+
+**Partial adjustment (recommended)**
+- If an agent emits `status=partial`, apply a conservative pull-to-neutral:
+  - \(score' = 5 + 0.7 \times (score - 5)\)
+
+---
+
+### 6.4 Weighting model
+
+**Weights (v1)**
+
+```
+final_score =
+  0.40 * fundamental +
+  0.35 * technical +
+  0.25 * sentiment
+```
+
+**Missing agents**
+- If an agent result is `status=error` (or missing), exclude it and **renormalize weights** across available agents.
+
+---
+
+### 6.5 Final recommendation thresholds
+
+```
+final_score > 7.5  → Strong Buy
+5.5 – 7.5          → Buy
+4.0 – 5.5          → Hold
+final_score < 4.0  → Avoid/Sell
+```
+
+---
+
+### 6.6 Overall confidence (v1 definition)
+- If agent confidences are available, define overall confidence as:
+  - weighted average of available agent confidences, using the same normalized weights.
+- If confidences are missing, compute a heuristic confidence based on:
+  - number of successful agents
+  - presence of `partial` statuses
+  - dispersion between agent scores (high disagreement → lower confidence)
+
+---
+
+### 6.7 Compare query tie-break rules
+When two stocks have similar `final_score` (difference ≤ 0.5):
+- Prefer higher **overall confidence**
+- Prefer lower disagreement between agent scores
+- Prefer stronger technical alignment with the chosen timeframe (period/interval)
+
+---
+
+### 6.8 Portfolio roll-up guidance
+- Portfolio endpoints should report:
+  - **portfolio-level score** (0–10) for diversification/risk quality
+  - **per-stock final_score** for relative strength within the portfolio
+- Portfolio “suggested rebalance” should reference the weakest/strongest constituents and explain which agent signals drove the recommendation.
+
+---
+
+## Phase 7 — Non-functional requirements (NFRs)
+
+### Performance
+- **Targets (initial)**
+  - `POST /analyze/stock`: P50 < 8s, P95 < 20s
+  - `POST /compare`: P50 < 16s, P95 < 40s (runs 2 analyses)
+  - `POST /analyze/portfolio`: linear in N; cap N for v1 or use async execution
+- **Budgets**
+  - Per upstream call timeout: ~12s (configurable)
+  - Prefer caching over repeated upstream calls
+
+### Scalability
+- v1 is designed for single-instance execution; scale by:
+  - running multiple backend workers (process-level) and relying on caching
+  - introducing Redis cache for shared caching across workers (optional)
+- For portfolio analysis, consider async execution or background jobs for large N.
+
+### Reliability & graceful degradation
+- If an upstream provider fails:
+  - return partial results if at least one agent succeeds
+  - renormalize weights across available agents (Phase 6)
+- If all agents fail: return `status=error` with `UPSTREAM_UNAVAILABLE` or `INTERNAL_ERROR`.
+
+### Security
+- Validate and sanitize user inputs (tickers, lists).
+- Treat all upstream and LLM outputs as untrusted; normalize and clamp scores.
+- Do not store secrets in git (`.env` is ignored by `.gitignore`).
+
+### Observability
+- Log key flows to `dump.log` (request start/end, upstream calls, cache hits, agent status).
+- Include `request_id` in every API response and log line.
+
 ## 1) High-Level Architecture
 
 ```
