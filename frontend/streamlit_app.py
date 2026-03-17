@@ -74,7 +74,7 @@ def _decision_from_score(score: float) -> str:
     return "Avoid/Sell"
 
 
-def _render_stock_like_result(data: dict, title: Optional[str] = None) -> None:
+def _render_stock_like_result(data: dict, title: Optional[str] = None, allow_expanders: bool = True) -> None:
     if title:
         st.subheader(title)
 
@@ -92,7 +92,11 @@ def _render_stock_like_result(data: dict, title: Optional[str] = None) -> None:
         if isinstance(agent_out, dict) and agent_out.get("status"):
             base = f"{base} — {_format_status(agent_out.get('status'))}"
 
-        with st.expander(base, expanded=False):
+        container = st.expander(base, expanded=False) if allow_expanders else st.container()
+        with container:
+            if not allow_expanders:
+                st.markdown(f"### {base}")
+
             if isinstance(agent_out, dict):
                 summary = agent_out.get("summary", "")
                 if summary:
@@ -178,6 +182,7 @@ def render_response(resp_json: dict) -> None:
                             "agent_breakdown": item.get("agent_breakdown"),
                         },
                         title=None,
+                        allow_expanders=False,
                     )
 
         weakest = data.get("weakest")
