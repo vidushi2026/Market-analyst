@@ -2,6 +2,7 @@ import requests
 import streamlit as st
 import os
 from typing import Optional
+import pandas as pd
 
 
 st.set_page_config(page_title="Market Analyst", layout="wide")
@@ -62,14 +63,28 @@ def _render_key_events(key_events: list) -> None:
     st.markdown("**Recent headlines/events:**")
     st.markdown("\n".join([f"- {e}" for e in key_events]))
 
+
+def _decision_from_score(score: float) -> str:
+    if score > 7.5:
+        return "Strong Buy"
+    if score >= 5.5:
+        return "Buy"
+    if score >= 4.0:
+        return "Hold"
+    return "Avoid/Sell"
+
+
 def _render_stock_like_result(data: dict, title: Optional[str] = None) -> None:
     if title:
         st.subheader(title)
 
     cols = st.columns(3)
-    cols[0].metric("Recommendation", str(data.get("final_recommendation", "-")))
-    cols[1].metric("Final score", f"{float(data.get('final_score', 0)):.2f}")
-    cols[2].metric("Confidence", f"{float(data.get('confidence', 0)):.2f}")
+    final_score = float(data.get("final_score", 0) or 0)
+    recommendation = data.get("final_recommendation") or _decision_from_score(final_score)
+    cols[0].metric("Recommendation", str(recommendation))
+    cols[1].metric("Final score", f"{final_score:.2f}")
+    conf = data.get("confidence")
+    cols[2].metric("Confidence", f"{float(conf):.2f}" if conf is not None else "-")
 
     breakdown = data.get("agent_breakdown") or {}
     for agent_name, agent_out in breakdown.items():
@@ -130,8 +145,54 @@ def render_response(resp_json: dict) -> None:
                 _render_stock_like_result(right, title=str(right.get("ticker", "Right")))
 
     if "per_stock" in data:
-        st.subheader("Per-stock results")
-        st.write(data.get("per_stock"))
+        st.subheader("Portfolio summary")
+        cols = st.columns(3)
+        cols[0].metric("Risk level", str(data.get("risk_level", "-")))
+        cols[1].metric("Diversification score", str(data.get("diversification_score", "-")))
+        cols[2].metric("Portfolio health", str(data.get("portfolio_health", "-")))
+
+        if data.get("summary"):
+            st.write(data["summary"])
+
+        per_stock = data.get("per_stock") or []
+        rows = []
+        for item in per_stock:
+            score = float(item.get("final_score", 0) or 0)
+            rows.append(
+                {
+                    "Ticker": item.get("ticker", ""),
+                    "Final score": round(score, 2),
+                    "Recommendation": _decision_from_score(score),
+                }
+            )
+        if rows:
+            st.subheader("Per-stock results")
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+            for item in per_stock:
+                t = item.get("ticker", "Stock")
+                with st.expander(f"{t} details", expanded=False):
+                    _render_stock_like_result(
+                        {
+                            "final_score": item.get("final_score"),
+                            "agent_breakdown": item.get("agent_breakdown"),
+                        },
+                        title=None,
+                    )
+
+        weakest = data.get("weakest")
+        strongest = data.get("strongest")
+        if isinstance(weakest, dict) and isinstance(strongest, dict):
+            st.subheader("Strongest / Weakest")
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(f"**Strongest:** `{strongest.get('ticker')}`")
+                if strongest.get("reason"):
+                    st.write(strongest["reason"])
+            with c2:
+                st.markdown(f"**Weakest:** `{weakest.get('ticker')}`")
+                if weakest.get("reason"):
+                    st.write(weakest["reason"])
 
 
 if mode == "Stock":
