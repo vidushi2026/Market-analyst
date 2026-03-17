@@ -7,7 +7,7 @@ dev-backend:
 	python3 -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
 dev-frontend:
-	streamlit run frontend/streamlit_app.py --server.port 8501
+	python3 -m streamlit run frontend/streamlit_app.py --server.port 8501
 
 test:
 	pytest -q
