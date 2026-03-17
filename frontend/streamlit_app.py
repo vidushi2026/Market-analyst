@@ -1,6 +1,7 @@
 import requests
 import streamlit as st
 import os
+from typing import Optional
 
 
 st.set_page_config(page_title="Market Analyst", layout="wide")
@@ -61,7 +62,7 @@ def _render_key_events(key_events: list) -> None:
     st.markdown("**Recent headlines/events:**")
     st.markdown("\n".join([f"- {e}" for e in key_events]))
 
-def _render_stock_like_result(data: dict, title: str | None = None) -> None:
+def _render_stock_like_result(data: dict, title: Optional[str] = None) -> None:
     if title:
         st.subheader(title)
 
