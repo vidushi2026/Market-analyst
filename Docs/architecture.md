@@ -672,6 +672,58 @@ When two stocks have similar `final_score` (difference ≤ 0.5):
 - **Redis unavailable** (future)
   - Actions: fall back to in-process cache, reduce concurrency, monitor memory.
 
+---
+
+## Phase 9 — Deployment & configuration
+
+### Local development
+- **Install deps**: `make install`
+- **Run backend**: `make dev-backend` (FastAPI on `:8000`)
+- **Run frontend**: `make dev-frontend` (Streamlit on `:8501`)
+- **Health checks**
+  - `GET /health` for basic liveness
+  - `GET /metrics` for in-process metrics snapshot
+
+### Docker (v1)
+- **Build**: `make docker-build`
+- **Run**: `make docker-run` (exposes `:8000`)
+
+### Production options (v1 guidance)
+- Run the backend behind a reverse proxy (TLS termination, request limits).
+- Scale by running multiple backend workers/instances; consider Redis for shared caching if needed.
+- Keep Streamlit separate from the API in production if you want independent scaling/deploy.
+
+### Configuration strategy
+- Centralize defaults in `config/settings.py` (weights, TTLs, upstream timeouts).
+- Prefer environment-variable overrides (future) for per-environment tuning.
+
+### Cost controls (if/when LLM is enabled)
+- Hard caps on max news results and frequency.
+- Prefer cached results; avoid re-running full analysis on refresh loops.
+- Always support a “no-LLM / heuristic sentiment” mode.
+
+---
+
+## Phase 10 — Testing strategy (implementation)
+
+### Unit tests (already present)
+- Scoring thresholds/renormalization.
+- Sentiment agent with mocked news provider.
+
+### API contract tests (add/maintain)
+- Verify response envelope (`request_id`, `status`, `data|error`) for each endpoint.
+- Verify basic validation behavior (e.g., compare requires exactly 2 tickers).
+
+### Integration tests (mocked)
+- End-to-end FastAPI route → orchestrator using monkeypatched orchestrator/service dependencies.
+- No real upstream calls (Yahoo/DDG) during tests.
+
+### E2E smoke test (manual for v1)
+- Run backend + frontend locally and execute:
+  - stock analysis
+  - compare
+  - portfolio analysis
+
 ## 1) High-Level Architecture
 
 ```
