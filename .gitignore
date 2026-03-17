@@ -1,0 +1,39 @@
+## OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+## Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+dist/
+build/
+*.egg-info/
+
+## Virtualenvs
+.venv/
+venv/
+env/
+
+## Jupyter
+.ipynb_checkpoints/
+
+## Streamlit
+.streamlit/secrets.toml
+
+## App secrets / environment
+.env
+.env.*
+
+## Logs
+dump.log
+*.log
+
