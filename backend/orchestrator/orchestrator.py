@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import time
 from typing import Any, Dict, List
 
 from backend.agents.fundamental import FundamentalAgent
@@ -12,6 +13,7 @@ from backend.orchestrator.scoring import (
     decision_from_score,
 )
 from backend.utils.logging_utils import get_logger
+from backend.utils.metrics import metrics
 
 logger = get_logger(__name__)
 
@@ -30,25 +32,41 @@ class Orchestrator:
     def analyze_stock(self, ticker: str, period: str, interval: str) -> Dict[str, Any]:
         request_id = str(uuid.uuid4())
         logger.info("orchestrator.analyze_stock.start request_id=%s ticker=%s", request_id, ticker)
+        metrics.inc("orchestrator_analyze_stock")
 
         agent_results: Dict[str, Dict[str, Any]] = {}
         # v1: sequential execution (safe + simple); can be parallelized later.
         try:
+            t0 = time.time()
             agent_results["fundamental"] = self._fundamental.run(ticker)
+            metrics.observe_ms("agent_fundamental_ms", (time.time() - t0) * 1000.0)
+            if agent_results["fundamental"].get("status") == "error":
+                metrics.inc("agent_fundamental_error")
         except Exception as e:  # noqa: BLE001
             logger.info("orchestrator.agent_error request_id=%s agent=fundamental err=%s", request_id, str(e))
+            metrics.inc("agent_fundamental_error")
             agent_results["fundamental"] = {"agent": "fundamental", "status": "error", "summary": "failed", "error": {"code": "INTERNAL_ERROR", "message": str(e), "details": {}}}
 
         try:
+            t0 = time.time()
             agent_results["technical"] = self._technical.run(ticker, period=period, interval=interval)
+            metrics.observe_ms("agent_technical_ms", (time.time() - t0) * 1000.0)
+            if agent_results["technical"].get("status") == "error":
+                metrics.inc("agent_technical_error")
         except Exception as e:  # noqa: BLE001
             logger.info("orchestrator.agent_error request_id=%s agent=technical err=%s", request_id, str(e))
+            metrics.inc("agent_technical_error")
             agent_results["technical"] = {"agent": "technical", "status": "error", "summary": "failed", "error": {"code": "INTERNAL_ERROR", "message": str(e), "details": {}}}
 
         try:
+            t0 = time.time()
             agent_results["sentiment"] = self._sentiment.run(query=ticker)
+            metrics.observe_ms("agent_sentiment_ms", (time.time() - t0) * 1000.0)
+            if agent_results["sentiment"].get("status") == "error":
+                metrics.inc("agent_sentiment_error")
         except Exception as e:  # noqa: BLE001
             logger.info("orchestrator.agent_error request_id=%s agent=sentiment err=%s", request_id, str(e))
+            metrics.inc("agent_sentiment_error")
             agent_results["sentiment"] = {"agent": "sentiment", "status": "error", "summary": "failed", "error": {"code": "INTERNAL_ERROR", "message": str(e), "details": {}}}
 
         final_score, contributions = compute_final_score(agent_results)

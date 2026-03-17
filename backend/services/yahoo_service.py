@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import time
 from typing import Any, Dict
 
 import yfinance as yf
@@ -8,6 +9,7 @@ import yfinance as yf
 from config.settings import settings
 from backend.utils.cache import TTLCache
 from backend.utils.logging_utils import get_logger
+from backend.utils.metrics import metrics
 
 logger = get_logger(__name__)
 
@@ -21,10 +23,14 @@ class YahooService:
         cached = self._cache.get(cache_key)
         if cached is not None:
             logger.info("yahoo.cache_hit prices %s", cache_key)
+            metrics.inc("cache_hit_prices")
             return cached
 
+        metrics.inc("cache_miss_prices")
         logger.info("yahoo.fetch prices ticker=%s period=%s interval=%s", ticker, period, interval)
+        t0 = time.time()
         df = yf.Ticker(ticker).history(period=period, interval=interval)
+        metrics.observe_ms("upstream_yahoo_prices_ms", (time.time() - t0) * 1000.0)
         rows = []
         for idx, row in df.iterrows():
             ts = idx.to_pydatetime().isoformat()
@@ -56,11 +62,15 @@ class YahooService:
         cached = self._cache.get(cache_key)
         if cached is not None:
             logger.info("yahoo.cache_hit fundamentals %s", cache_key)
+            metrics.inc("cache_hit_fundamentals")
             return cached
 
+        metrics.inc("cache_miss_fundamentals")
         logger.info("yahoo.fetch fundamentals ticker=%s", ticker)
         t = yf.Ticker(ticker)
+        t0 = time.time()
         info = t.info or {}
+        metrics.observe_ms("upstream_yahoo_fundamentals_ms", (time.time() - t0) * 1000.0)
 
         payload = {
             "ticker": ticker,

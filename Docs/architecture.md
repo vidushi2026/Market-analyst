@@ -636,6 +636,42 @@ When two stocks have similar `final_score` (difference ≤ 0.5):
 - Log key flows to `dump.log` (request start/end, upstream calls, cache hits, agent status).
 - Include `request_id` in every API response and log line.
 
+---
+
+## Phase 8 — Observability & operations
+
+### Logging
+- **Sink**: `dump.log` (rotating file)
+- **Format**: structured-ish key/value in message (e.g., `request_id=... agent=...`)
+- **Correlation**:
+  - API generates a `request_id` per request (returned to clients)
+  - Orchestrator generates its own `request_id` for internal tracking (v1)
+
+### Metrics (v1)
+- Exposed via `GET /metrics` as JSON (in-process).
+- **Captured metrics** (initial):
+  - API request counts: `api_analyze_stock_requests`, `api_compare_requests`, `api_analyze_portfolio_requests`
+  - API success/error counts: `*_ok`, `*_error`
+  - Upstream timings (ms): `upstream_yahoo_prices_ms`, `upstream_yahoo_fundamentals_ms`, `upstream_ddg_news_ms`
+  - Agent timings (ms): `agent_fundamental_ms`, `agent_technical_ms`, `agent_sentiment_ms`
+  - Cache hit/miss counts: `cache_hit_prices`, `cache_miss_prices`, etc.
+
+### Tracing (future)
+- v1 uses timers + `request_id` logging; can be upgraded to OpenTelemetry spans later.
+
+### Runbooks (v1)
+- **Yahoo down / rate limited**
+  - Symptoms: high `upstream_yahoo_*` latency, increased agent partial/error.
+  - Actions: reduce request volume, increase caching TTL, retry with backoff, return partial results.
+- **DuckDuckGo/news failing**
+  - Symptoms: `upstream_ddg_news_ms` spikes, sentiment becomes `partial`.
+  - Actions: reduce max_results, increase TTL, degrade sentiment weight if needed.
+- **LLM provider errors** (if enabled later)
+  - Symptoms: sentiment agent errors/timeouts.
+  - Actions: fall back to heuristic sentiment, disable LLM usage temporarily.
+- **Redis unavailable** (future)
+  - Actions: fall back to in-process cache, reduce concurrency, monitor memory.
+
 ## 1) High-Level Architecture
 
 ```
