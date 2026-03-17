@@ -113,7 +113,7 @@ def render_response(resp_json: dict) -> None:
         _render_stock_like_result(data, title=None)
         return
 
-    # Compare / portfolio: show a readable summary, keep JSON in expander
+    # Compare / portfolio: show a readable summary
     if "winner" in data:
         st.metric("Winner", str(data.get("winner")))
         st.write(data.get("reason", ""))
@@ -132,9 +132,6 @@ def render_response(resp_json: dict) -> None:
     if "per_stock" in data:
         st.subheader("Per-stock results")
         st.write(data.get("per_stock"))
-
-    with st.expander("Raw response JSON"):
-        st.json(resp_json)
 
 
 if mode == "Stock":
